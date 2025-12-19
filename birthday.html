@@ -1,318 +1,395 @@
-﻿<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<title>祝你生日快乐_光芒万丈_cunzher</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>🎉 生日快乐 💫</title>
+    <style>
+        /* 基础样式 */
+        body {
+            background: #000;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', 'SimHei', Arial, sans-serif;
+        }
 
-<style>
-/* basic styles for black background and crosshair cursor */
-body {
-	background: #000;
-	margin: 0;
-}
+        canvas {
+            cursor: crosshair;
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
 
-canvas {
-	cursor: crosshair;
-	display: block;
-}
-</style>
+        /* 加载提示 */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #000428, #004e92);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 24px;
+            z-index: 999;
+            transition: opacity 1s ease-out;
+        }
 
+        .loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>🎉 烟花即将绽放 🎉</div>
+    </div>
+    <canvas id="canvas"></canvas>
 
-<canvas id="canvas"></canvas>
+    <script>
+        // 页面加载完成后隐藏加载提示
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                document.getElementById('loading').classList.add('hidden');
+            }, 1500);
+        });
 
-<script>
-// when animating on canvas, it is best to use requestAnimationFrame instead of setTimeout or setInterval
-// not supported in all browsers though and sometimes needs a prefix, so we need a shim
-window.requestAnimFrame = ( function() {
-	return window.requestAnimationFrame ||
-				window.webkitRequestAnimationFrame ||
-				window.mozRequestAnimationFrame ||
-				function( callback ) {
-					window.setTimeout( callback, 1000 / 60 );
-				};
-})();
+        // requestAnimationFrame 兼容性处理
+        window.requestAnimFrame = (function() {
+            return window.requestAnimationFrame ||
+                window.webkitRequestAnimationFrame ||
+                window.mozRequestAnimationFrame ||
+                function(callback) {
+                    window.setTimeout(callback, 1000 / 60);
+                };
+        })();
 
-// now we will setup our basic variables for the demo
-var canvas = document.getElementById( 'canvas' ),
-		ctx = canvas.getContext( '2d' ),
-		// full screen dimensions
-		cw = window.innerWidth,
-		ch = window.innerHeight,
-		// firework collection
-		fireworks = [],
-		// particle collection
-		particles = [],
-		// starting hue
-		hue = 120,
-		// when launching fireworks with a click, too many get launched at once without a limiter, one launch per 5 loop ticks
-		limiterTotal = 5,
-		limiterTick = 0,
-		// this will time the auto launches of fireworks, one launch per 80 loop ticks
-		timerTotal = 80,
-		timerTick = 0,
-		mousedown = false,
-		// mouse x coordinate,
-		mx,
-		// mouse y coordinate
-		my;
-		
-// set canvas dimensions
-canvas.width = cw;
-canvas.height = ch;
+        // 基本变量设置
+        var canvas = document.getElementById('canvas'),
+            ctx = canvas.getContext('2d'),
+            cw = window.innerWidth,
+            ch = window.innerHeight,
+            fireworks = [],
+            particles = [],
+            hue = 120,
+            limiterTotal = 3,  // 减少限制器时间，增加烟花密度
+            limiterTick = 0,
+            timerTotal = 30,   // 减少自动发射间隔，增加烟花频率
+            timerTick = 0,
+            mousedown = false,
+            mx,
+            my;
 
-// now we are going to setup our function placeholders for the entire demo
+        // 设置画布尺寸
+        function setCanvasSize() {
+            cw = window.innerWidth;
+            ch = window.innerHeight;
+            canvas.width = cw;
+            canvas.height = ch;
+        }
 
-// get a random number within a range
-function random( min, max ) {
-	return Math.random() * ( max - min ) + min;
-}
+        setCanvasSize();
+        window.addEventListener('resize', setCanvasSize);
 
-// calculate the distance between two points
-function calculateDistance( p1x, p1y, p2x, p2y ) {
-	var xDistance = p1x - p2x,
-			yDistance = p1y - p2y;
-	return Math.sqrt( Math.pow( xDistance, 2 ) + Math.pow( yDistance, 2 ) );
-}
+        // 工具函数
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
 
-// create firework
-function Firework( sx, sy, tx, ty ) {
-	// actual coordinates
-	this.x = sx;
-	this.y = sy;
-	// starting coordinates
-	this.sx = sx;
-	this.sy = sy;
-	// target coordinates
-	this.tx = tx;
-	this.ty = ty;
-	// distance from starting point to target
-	this.distanceToTarget = calculateDistance( sx, sy, tx, ty );
-	this.distanceTraveled = 0;
-	// track the past coordinates of each firework to create a trail effect, increase the coordinate count to create more prominent trails
-	this.coordinates = [];
-	this.coordinateCount = 3;
-	// populate initial coordinate collection with the current coordinates
-	while( this.coordinateCount-- ) {
-		this.coordinates.push( [ this.x, this.y ] );
-	}
-	this.angle = Math.atan2( ty - sy, tx - sx );
-	this.speed = 2;
-	this.acceleration = 1.05;
-	this.brightness = random( 50, 70 );
-	// circle target indicator radius
-	this.targetRadius = 1;
-}
+        function calculateDistance(p1x, p1y, p2x, p2y) {
+            var xDistance = p1x - p2x,
+                yDistance = p1y - p2y;
+            return Math.sqrt(Math.pow(xDistance, 2) + Math.pow(yDistance, 2));
+        }
 
-// update firework
-Firework.prototype.update = function( index ) {
-	// remove last item in coordinates array
-	this.coordinates.pop();
-	// add current coordinates to the start of the array
-	this.coordinates.unshift( [ this.x, this.y ] );
-	
-	// cycle the circle target indicator radius
-	if( this.targetRadius < 8 ) {
-		this.targetRadius += 0.3;
-	} else {
-		this.targetRadius = 1;
-	}
-	
-	// speed up the firework
-	this.speed *= this.acceleration;
-	
-	// get the current velocities based on angle and speed
-	var vx = Math.cos( this.angle ) * this.speed,
-			vy = Math.sin( this.angle ) * this.speed;
-	// how far will the firework have traveled with velocities applied?
-	this.distanceTraveled = calculateDistance( this.sx, this.sy, this.x + vx, this.y + vy );
-	
-	// if the distance traveled, including velocities, is greater than the initial distance to the target, then the target has been reached
-	if( this.distanceTraveled >= this.distanceToTarget ) {
-		createParticles( this.tx, this.ty );
-		// remove the firework, use the index passed into the update function to determine which to remove
-		fireworks.splice( index, 1 );
-	} else {
-		// target not reached, keep traveling
-		this.x += vx;
-		this.y += vy;
-	}
-}
+        // 烟花类
+        function Firework(sx, sy, tx, ty) {
+            this.x = sx;
+            this.y = sy;
+            this.sx = sx;
+            this.sy = sy;
+            this.tx = tx;
+            this.ty = ty;
+            this.distanceToTarget = calculateDistance(sx, sy, tx, ty);
+            this.distanceTraveled = 0;
+            this.coordinates = [];
+            this.coordinateCount = 5; // 增加轨迹点数
+            
+            while(this.coordinateCount--) {
+                this.coordinates.push([this.x, this.y]);
+            }
+            
+            this.angle = Math.atan2(ty - sy, tx - sx);
+            this.speed = random(2, 5); // 随机速度
+            this.acceleration = 1.05;
+            this.brightness = random(50, 70);
+            this.targetRadius = 1;
+            this.lineWidth = random(1, 3); // 随机线宽
+        }
 
-// draw firework
-Firework.prototype.draw = function() {
-	ctx.beginPath();
-	// move to the last tracked coordinate in the set, then draw a line to the current x and y
-	ctx.moveTo( this.coordinates[ this.coordinates.length - 1][ 0 ], this.coordinates[ this.coordinates.length - 1][ 1 ] );
-	ctx.lineTo( this.x, this.y );
-	ctx.strokeStyle = 'hsl(' + hue + ', 100%, ' + this.brightness + '%)';
-	ctx.stroke();
-	
-	ctx.beginPath();
-	// draw the target for this firework with a pulsing circle
-	ctx.arc( this.tx, this.ty, this.targetRadius, 0, Math.PI * 2 );
-	ctx.stroke();
-}
+        Firework.prototype.update = function(index) {
+            this.coordinates.pop();
+            this.coordinates.unshift([this.x, this.y]);
+            
+            if(this.targetRadius < 8) {
+                this.targetRadius += 0.3;
+            } else {
+                this.targetRadius = 1;
+            }
+            
+            this.speed *= this.acceleration;
+            var vx = Math.cos(this.angle) * this.speed,
+                vy = Math.sin(this.angle) * this.speed;
+            this.distanceTraveled = calculateDistance(this.sx, this.sy, this.x + vx, this.y + vy);
+            
+            if(this.distanceTraveled >= this.distanceToTarget) {
+                createParticles(this.tx, this.ty);
+                fireworks.splice(index, 1);
+            } else {
+                this.x += vx;
+                this.y += vy;
+            }
+        };
 
-// create particle
-function Particle( x, y ) {
-	this.x = x;
-	this.y = y;
-	// track the past coordinates of each particle to create a trail effect, increase the coordinate count to create more prominent trails
-	this.coordinates = [];
-	this.coordinateCount = 5;
-	while( this.coordinateCount-- ) {
-		this.coordinates.push( [ this.x, this.y ] );
-	}
-	// set a random angle in all possible directions, in radians
-	this.angle = random( 0, Math.PI * 2 );
-	this.speed = random( 1, 10 );
-	// friction will slow the particle down
-	this.friction = 0.95;
-	// gravity will be applied and pull the particle down
-	this.gravity = 1;
-	// set the hue to a random number +-20 of the overall hue variable
-	this.hue = random( hue - 20, hue + 20 );
-	this.brightness = random( 50, 80 );
-	this.alpha = 1;
-	// set how fast the particle fades out
-	this.decay = random( 0.015, 0.03 );
-}
+        Firework.prototype.draw = function() {
+            ctx.beginPath();
+            ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
+            ctx.lineTo(this.x, this.y);
+            ctx.strokeStyle = 'hsl(' + hue + ', 100%, ' + this.brightness + '%)';
+            ctx.lineWidth = this.lineWidth;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // 绘制目标点光晕效果
+            ctx.beginPath();
+            ctx.arc(this.tx, this.ty, this.targetRadius * 2, 0, Math.PI * 2);
+            ctx.fillStyle = 'hsla(' + hue + ', 100%, 50%, 0.3)';
+            ctx.fill();
+        };
 
-// update particle
-Particle.prototype.update = function( index ) {
-	// remove last item in coordinates array
-	this.coordinates.pop();
-	// add current coordinates to the start of the array
-	this.coordinates.unshift( [ this.x, this.y ] );
-	// slow down the particle
-	this.speed *= this.friction;
-	// apply velocity
-	this.x += Math.cos( this.angle ) * this.speed;
-	this.y += Math.sin( this.angle ) * this.speed + this.gravity;
-	// fade out the particle
-	this.alpha -= this.decay;
-	
-	// remove the particle once the alpha is low enough, based on the passed in index
-	if( this.alpha <= this.decay ) {
-		particles.splice( index, 1 );
-	}
-}
+        // 粒子类
+        function Particle(x, y) {
+            this.x = x;
+            this.y = y;
+            this.coordinates = [];
+            this.coordinateCount = 8; // 增加轨迹点数
+            
+            while(this.coordinateCount--) {
+                this.coordinates.push([this.x, this.y]);
+            }
+            
+            this.angle = random(0, Math.PI * 2);
+            this.speed = random(1, 15); // 增加速度范围
+            this.friction = 0.95;
+            this.gravity = random(0.5, 1.5); // 随机重力
+            this.hue = random(hue - 30, hue + 30); // 扩大色相范围
+            this.brightness = random(50, 100); // 提高亮度范围
+            this.alpha = 1;
+            this.decay = random(0.01, 0.05); // 随机衰减率
+            this.size = random(1, 3); // 粒子大小
+        }
 
+        Particle.prototype.update = function(index) {
+            this.coordinates.pop();
+            this.coordinates.unshift([this.x, this.y]);
+            this.speed *= this.friction;
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed + this.gravity;
+            this.alpha -= this.decay;
+            
+            if(this.alpha <= this.decay) {
+                particles.splice(index, 1);
+            }
+        };
 
+        Particle.prototype.draw = function() {
+            ctx.beginPath();
+            ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
+            ctx.lineTo(this.x, this.y);
+            ctx.strokeStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + this.alpha + ')';
+            ctx.lineWidth = this.size;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // 添加光晕效果
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+            ctx.fillStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + (this.alpha * 0.3) + ')';
+            ctx.fill();
+        };
 
-// draw particle
-Particle.prototype.draw = function() {
-	  
-  ctx. beginPath();
-	// move to the last tracked coordinates in the set, then draw a line to the current x and y
-	ctx.moveTo( this.coordinates[ this.coordinates.length - 1 ][ 0 ], this.coordinates[ this.coordinates.length - 1 ][ 1 ] );
-	ctx.lineTo( this.x, this.y );
-	ctx.strokeStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + this.alpha + ')';
-	ctx.stroke();
-  
-  
-}
+        // 创建粒子
+        function createParticles(x, y) {
+            // 大量粒子创造绚烂效果
+            var particleCount = Math.floor(random(50, 100));
+            while(particleCount--) {
+                particles.push(new Particle(x, y));
+            }
+        }
 
-// create particle group/explosion
-function createParticles( x, y ) {
-	// increase the particle count for a bigger explosion, beware of the canvas performance hit with the increased particles though
-	var particleCount = 30;
-	while( particleCount-- ) {
-		particles.push( new Particle( x, y ) );
-	}
-}
+        // 绘制华丽文字
+        function drawText() {
+            // 主标题
+            var mainText = "🎉 生日快乐 🎉";
+            var fontSize = Math.min(cw * 0.1, 80); // 更大的字体
+            ctx.font = "bold " + fontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            
+            // 文字阴影效果
+            ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
+            // 渐变色彩
+            var gradient = ctx.createLinearGradient(0, ch/2 - fontSize, 0, ch/2 + fontSize);
+            gradient.addColorStop(0, "hsl(" + (hue + 60) + ", 100%, 70%)");
+            gradient.addColorStop(0.5, "hsl(" + hue + ", 100%, 80%)");
+            gradient.addColorStop(1, "hsl(" + (hue - 60) + ", 100%, 70%)");
+            ctx.fillStyle = gradient;
+            
+            ctx.fillText(mainText, cw / 2, ch / 3);
+            
+            // 副标题
+            var subText = "愿你光芒万丈 ✨";
+            var subFontSize = Math.min(cw * 0.06, 50);
+            ctx.font = "bold " + subFontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
+            ctx.fillStyle = "hsla(" + (hue + 180) + ", 100%, 80%, 0.9)";
+            ctx.shadowBlur = 15;
+            ctx.fillText(subText, cw / 2, ch / 3 + fontSize + 20);
+            
+            // 恢复默认阴影
+            ctx.shadowBlur = 0;
+        }
 
-// main demo loop
-function loop() {
-	// this function will run endlessly with requestAnimationFrame
-	requestAnimFrame( loop );
-	
-	// increase the hue to get different colored fireworks over time
-	hue += 0.5;
-	
-	// normally, clearRect() would be used to clear the canvas
-	// we want to create a trailing effect though
-	// setting the composite operation to destination-out will allow us to clear the canvas at a specific opacity, rather than wiping it entirely
-	ctx.globalCompositeOperation = 'destination-out';
-	// decrease the alpha property to create more prominent trails
-	ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-	ctx.fillRect( 0, 0, cw, ch );
-	// change the composite operation back to our main mode
-	// lighter creates bright highlight points as the fireworks and particles overlap each other
-	ctx.globalCompositeOperation = 'lighter';
-	
-    var text = "HAPPY BIRTHDAY CYT !!";  
-  ctx.font = "50px sans-serif";
-  var textData = ctx.measureText(text);
-  ctx.fillStyle = "rgba("+parseInt(random(0,255))+","+parseInt(random(0,255))+","+parseInt(random(0,255))+",0.3)";
-  ctx.fillText(text,cw /2-textData.width/2,ch/2); 
-  
-	// loop over each firework, draw it, update it
-	var i = fireworks.length;
-	while( i-- ) {
-		fireworks[ i ].draw();
-		fireworks[ i ].update( i );
-	}
-	
-	// loop over each particle, draw it, update it
-	var i = particles.length;
-	while( i-- ) {
-		particles[ i ].draw();
-		particles[ i ].update( i );
-	}
-	
-	// launch fireworks automatically to random coordinates, when the mouse isn't down
-	if( timerTick >= timerTotal ) {
-		if( !mousedown ) {
-			// start the firework at the bottom middle of the screen, then set the random target coordinates, the random y coordinates will be set within the range of the top half of the screen
-      
-      for(var h=0;h<50;h++)
-      {
-           fireworks.push( new Firework( cw / 2, ch/2, random( 0, cw ), random( 0, ch  ) ) );
-      }
-      
-      
-			timerTick = 0;
-		}
-	} else {
-		timerTick++;
-	}
-	
-	// limit the rate at which fireworks get launched when mouse is down
-	if( limiterTick >= limiterTotal ) {
-		if( mousedown ) {
-			// start the firework at the bottom middle of the screen, then set the current mouse coordinates as the target
-			fireworks.push( new Firework( cw / 2, ch/2, mx, my ) );
-			limiterTick = 0;
-		}
-	} else {
-		limiterTick++;
-	}
-}
+        // 主循环
+        function loop() {
+            requestAnimFrame(loop);
+            
+            // 色相变化创造彩虹效果
+            hue = (hue + 0.8) % 360;
+            
+            // 创建拖尾效果
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // 减少拖尾透明度，保持更多残影
+            ctx.fillRect(0, 0, cw, ch);
+            ctx.globalCompositeOperation = 'lighter';
+            
+            // 绘制华丽文字
+            drawText();
+            
+            // 更新和绘制烟花
+            var i = fireworks.length;
+            while(i--) {
+                fireworks[i].draw();
+                fireworks[i].update(i);
+            }
+            
+            // 更新和绘制粒子
+            var j = particles.length;
+            while(j--) {
+                particles[j].draw();
+                particles[j].update(j);
+            }
+            
+            // 自动发射烟花
+            if(timerTick >= timerTotal) {
+                if(!mousedown) {
+                    // 在屏幕不同区域发射多束烟花
+                    var fireworkCount = Math.floor(random(3, 8));
+                    for(var h = 0; h < fireworkCount; h++) {
+                        // 随机选择发射起点
+                        var startX = random(cw * 0.2, cw * 0.8);
+                        var startY = ch;
+                        // 随机选择爆炸点
+                        var targetX = random(0, cw);
+                        var targetY = random(0, ch * 0.7);
+                        fireworks.push(new Firework(startX, startY, targetX, targetY));
+                    }
+                    timerTick = 0;
+                }
+            } else {
+                timerTick++;
+            }
+            
+            // 鼠标/触摸事件发射烟花
+            if(limiterTick >= limiterTotal) {
+                if(mousedown) {
+                    fireworks.push(new Firework(cw / 2, ch, mx, my));
+                    limiterTick = 0;
+                }
+            } else {
+                limiterTick++;
+            }
+        }
 
-// mouse event bindings
-// update the mouse coordinates on mousemove
-canvas.addEventListener( 'mousemove', function( e ) {
-	mx = e.pageX - canvas.offsetLeft;
-	my = e.pageY - canvas.offsetTop;
-});
+        // 事件监听 - 鼠标
+        canvas.addEventListener('mousemove', function(e) {
+            e.preventDefault();
+            mx = e.pageX - canvas.offsetLeft;
+            my = e.pageY - canvas.offsetTop;
+        });
 
-// toggle mousedown state and prevent canvas from being selected
-canvas.addEventListener( 'mousedown', function( e ) {
-	e.preventDefault();
-	mousedown = true;
-});
+        canvas.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            mousedown = true;
+        });
 
-canvas.addEventListener( 'mouseup', function( e ) {
-	e.preventDefault();
-	mousedown = false;
-});
+        canvas.addEventListener('mouseup', function(e) {
+            e.preventDefault();
+            mousedown = false;
+        });
 
-// once the window loads, we are ready for some fireworks!
-window.onload = loop;
+        // 事件监听 - 触摸设备
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            var touch = e.touches[0];
+            mx = touch.clientX - canvas.offsetLeft;
+            my = touch.clientY - canvas.offsetTop;
+            mousedown = true;
+        });
 
-</script>
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+            var touch = e.touches[0];
+            mx = touch.clientX - canvas.offsetLeft;
+            my = touch.clientY - canvas.offsetTop;
+        });
+
+        canvas.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            mousedown = false;
+        });
+
+        // 启动动画
+        window.onload = function() {
+            loop();
+        };
+    </script>
 </body>
 </html>
