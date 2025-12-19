@@ -64,332 +64,338 @@
     </style>
 </head>
 <body>
-    <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <div>🎉 烟花即将绽放 🎉</div>
-    </div>
-    <canvas id="canvas"></canvas>
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>🎉 烟花即将绽放 🎉</div>
+</div>
+<canvas id="canvas"></canvas>
 
-    <script>
-        // 页面加载完成后隐藏加载提示
-        window.addEventListener('load', function() {
-            setTimeout(function() {
-                document.getElementById('loading').classList.add('hidden');
-            }, 1500);
-        });
+<script>
+    // 页面加载完成后隐藏加载提示
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            document.getElementById('loading').classList.add('hidden');
+        }, 1500);
+    });
 
-        // requestAnimationFrame 兼容性处理
-        window.requestAnimFrame = (function() {
-            return window.requestAnimationFrame ||
-                window.webkitRequestAnimationFrame ||
-                window.mozRequestAnimationFrame ||
-                function(callback) {
-                    window.setTimeout(callback, 1000 / 60);
-                };
-        })();
+    // requestAnimationFrame 兼容性处理
+    window.requestAnimFrame = (function() {
+        return window.requestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            function(callback) {
+                window.setTimeout(callback, 1000 / 60);
+            };
+    })();
 
-        // 基本变量设置
-        var canvas = document.getElementById('canvas'),
-            ctx = canvas.getContext('2d'),
-            cw = window.innerWidth,
-            ch = window.innerHeight,
-            fireworks = [],
-            particles = [],
-            hue = 120,
-            limiterTotal = 3,  // 减少限制器时间，增加烟花密度
-            limiterTick = 0,
-            timerTotal = 30,   // 减少自动发射间隔，增加烟花频率
-            timerTick = 0,
-            mousedown = false,
-            mx,
-            my;
+    // 基本变量设置
+    var canvas = document.getElementById('canvas'),
+        ctx = canvas.getContext('2d'),
+        cw = window.innerWidth,
+        ch = window.innerHeight,
+        fireworks = [],
+        particles = [],
+        hue = 120,
+        limiterTotal = 3,  // 减少限制器时间，增加烟花密度
+        limiterTick = 0,
+        timerTotal = 30,   // 减少自动发射间隔，增加烟花频率
+        timerTick = 0,
+        mousedown = false,
+        mx,
+        my;
 
-        // 设置画布尺寸
-        function setCanvasSize() {
-            cw = window.innerWidth;
-            ch = window.innerHeight;
-            canvas.width = cw;
-            canvas.height = ch;
+    // 设置画布尺寸
+    function setCanvasSize() {
+        cw = window.innerWidth;
+        ch = window.innerHeight;
+        canvas.width = cw;
+        canvas.height = ch;
+    }
+
+    setCanvasSize();
+    window.addEventListener('resize', setCanvasSize);
+
+    // 工具函数
+    function random(min, max) {
+        return Math.random() * (max - min) + min;
+    }
+
+    function calculateDistance(p1x, p1y, p2x, p2y) {
+        var xDistance = p1x - p2x,
+            yDistance = p1y - p2y;
+        return Math.sqrt(Math.pow(xDistance, 2) + Math.pow(yDistance, 2));
+    }
+
+    // 烟花类
+    function Firework(sx, sy, tx, ty) {
+        this.x = sx;
+        this.y = sy;
+        this.sx = sx;
+        this.sy = sy;
+        this.tx = tx;
+        this.ty = ty;
+        this.distanceToTarget = calculateDistance(sx, sy, tx, ty);
+        this.distanceTraveled = 0;
+        this.coordinates = [];
+        this.coordinateCount = 5; // 增加轨迹点数
+
+        while(this.coordinateCount--) {
+            this.coordinates.push([this.x, this.y]);
         }
 
-        setCanvasSize();
-        window.addEventListener('resize', setCanvasSize);
+        this.angle = Math.atan2(ty - sy, tx - sx);
+        this.speed = random(2, 5); // 随机速度
+        this.acceleration = 1.05;
+        this.brightness = random(50, 70);
+        this.targetRadius = 1;
+        this.lineWidth = random(1, 3); // 随机线宽
+    }
 
-        // 工具函数
-        function random(min, max) {
-            return Math.random() * (max - min) + min;
-        }
+    Firework.prototype.update = function(index) {
+        this.coordinates.pop();
+        this.coordinates.unshift([this.x, this.y]);
 
-        function calculateDistance(p1x, p1y, p2x, p2y) {
-            var xDistance = p1x - p2x,
-                yDistance = p1y - p2y;
-            return Math.sqrt(Math.pow(xDistance, 2) + Math.pow(yDistance, 2));
-        }
-
-        // 烟花类
-        function Firework(sx, sy, tx, ty) {
-            this.x = sx;
-            this.y = sy;
-            this.sx = sx;
-            this.sy = sy;
-            this.tx = tx;
-            this.ty = ty;
-            this.distanceToTarget = calculateDistance(sx, sy, tx, ty);
-            this.distanceTraveled = 0;
-            this.coordinates = [];
-            this.coordinateCount = 5; // 增加轨迹点数
-            
-            while(this.coordinateCount--) {
-                this.coordinates.push([this.x, this.y]);
-            }
-            
-            this.angle = Math.atan2(ty - sy, tx - sx);
-            this.speed = random(2, 5); // 随机速度
-            this.acceleration = 1.05;
-            this.brightness = random(50, 70);
+        if(this.targetRadius < 8) {
+            this.targetRadius += 0.3;
+        } else {
             this.targetRadius = 1;
-            this.lineWidth = random(1, 3); // 随机线宽
         }
 
-        Firework.prototype.update = function(index) {
-            this.coordinates.pop();
-            this.coordinates.unshift([this.x, this.y]);
-            
-            if(this.targetRadius < 8) {
-                this.targetRadius += 0.3;
-            } else {
-                this.targetRadius = 1;
-            }
-            
-            this.speed *= this.acceleration;
-            var vx = Math.cos(this.angle) * this.speed,
-                vy = Math.sin(this.angle) * this.speed;
-            this.distanceTraveled = calculateDistance(this.sx, this.sy, this.x + vx, this.y + vy);
-            
-            if(this.distanceTraveled >= this.distanceToTarget) {
-                createParticles(this.tx, this.ty);
-                fireworks.splice(index, 1);
-            } else {
-                this.x += vx;
-                this.y += vy;
-            }
-        };
+        this.speed *= this.acceleration;
+        var vx = Math.cos(this.angle) * this.speed,
+            vy = Math.sin(this.angle) * this.speed;
+        this.distanceTraveled = calculateDistance(this.sx, this.sy, this.x + vx, this.y + vy);
 
-        Firework.prototype.draw = function() {
-            ctx.beginPath();
-            ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
-            ctx.lineTo(this.x, this.y);
-            ctx.strokeStyle = 'hsl(' + hue + ', 100%, ' + this.brightness + '%)';
-            ctx.lineWidth = this.lineWidth;
-            ctx.lineCap = 'round';
-            ctx.stroke();
-            
-            // 绘制目标点光晕效果
-            ctx.beginPath();
-            ctx.arc(this.tx, this.ty, this.targetRadius * 2, 0, Math.PI * 2);
-            ctx.fillStyle = 'hsla(' + hue + ', 100%, 50%, 0.3)';
-            ctx.fill();
-        };
+        if(this.distanceTraveled >= this.distanceToTarget) {
+            createParticles(this.tx, this.ty);
+            fireworks.splice(index, 1);
+        } else {
+            this.x += vx;
+            this.y += vy;
+        }
+    };
 
-        // 粒子类
-        function Particle(x, y) {
-            this.x = x;
-            this.y = y;
-            this.coordinates = [];
-            this.coordinateCount = 8; // 增加轨迹点数
-            
-            while(this.coordinateCount--) {
-                this.coordinates.push([this.x, this.y]);
-            }
-            
-            this.angle = random(0, Math.PI * 2);
-            this.speed = random(1, 15); // 增加速度范围
-            this.friction = 0.95;
-            this.gravity = random(0.5, 1.5); // 随机重力
-            this.hue = random(hue - 30, hue + 30); // 扩大色相范围
-            this.brightness = random(50, 100); // 提高亮度范围
-            this.alpha = 1;
-            this.decay = random(0.01, 0.05); // 随机衰减率
-            this.size = random(1, 3); // 粒子大小
+    Firework.prototype.draw = function() {
+        ctx.beginPath();
+        ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
+        ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = 'hsl(' + hue + ', 100%, ' + this.brightness + '%)';
+        ctx.lineWidth = this.lineWidth;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // 绘制目标点光晕效果
+        ctx.beginPath();
+        ctx.arc(this.tx, this.ty, this.targetRadius * 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'hsla(' + hue + ', 100%, 50%, 0.3)';
+        ctx.fill();
+    };
+
+    // 粒子类
+    function Particle(x, y) {
+        this.x = x;
+        this.y = y;
+        this.coordinates = [];
+        this.coordinateCount = 8; // 增加轨迹点数
+
+        while(this.coordinateCount--) {
+            this.coordinates.push([this.x, this.y]);
         }
 
-        Particle.prototype.update = function(index) {
-            this.coordinates.pop();
-            this.coordinates.unshift([this.x, this.y]);
-            this.speed *= this.friction;
-            this.x += Math.cos(this.angle) * this.speed;
-            this.y += Math.sin(this.angle) * this.speed + this.gravity;
-            this.alpha -= this.decay;
-            
-            if(this.alpha <= this.decay) {
-                particles.splice(index, 1);
-            }
-        };
+        this.angle = random(0, Math.PI * 2);
+        this.speed = random(1, 15); // 增加速度范围
+        this.friction = 0.95;
+        this.gravity = random(0.5, 1.5); // 随机重力
+        this.hue = random(hue - 30, hue + 30); // 扩大色相范围
+        this.brightness = random(50, 100); // 提高亮度范围
+        this.alpha = 1;
+        this.decay = random(0.01, 0.05); // 随机衰减率
+        this.size = random(1, 3); // 粒子大小
+    }
 
-        Particle.prototype.draw = function() {
-            ctx.beginPath();
-            ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
-            ctx.lineTo(this.x, this.y);
-            ctx.strokeStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + this.alpha + ')';
-            ctx.lineWidth = this.size;
-            ctx.lineCap = 'round';
-            ctx.stroke();
-            
-            // 添加光晕效果
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
-            ctx.fillStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + (this.alpha * 0.3) + ')';
-            ctx.fill();
-        };
+    Particle.prototype.update = function(index) {
+        this.coordinates.pop();
+        this.coordinates.unshift([this.x, this.y]);
+        this.speed *= this.friction;
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed + this.gravity;
+        this.alpha -= this.decay;
 
-        // 创建粒子
-        function createParticles(x, y) {
-            // 大量粒子创造绚烂效果
-            var particleCount = Math.floor(random(50, 100));
-            while(particleCount--) {
-                particles.push(new Particle(x, y));
-            }
+        if(this.alpha <= this.decay) {
+            particles.splice(index, 1);
+        }
+    };
+
+    Particle.prototype.draw = function() {
+        ctx.beginPath();
+        ctx.moveTo(this.coordinates[this.coordinates.length - 1][0], this.coordinates[this.coordinates.length - 1][1]);
+        ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + this.alpha + ')';
+        ctx.lineWidth = this.size;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // 添加光晕效果
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'hsla(' + this.hue + ', 100%, ' + this.brightness + '%, ' + (this.alpha * 0.3) + ')';
+        ctx.fill();
+    };
+
+    // 创建粒子
+    function createParticles(x, y) {
+        // 大量粒子创造绚烂效果
+        var particleCount = Math.floor(random(50, 100));
+        while(particleCount--) {
+            particles.push(new Particle(x, y));
+        }
+    }
+
+    // 绘制粉色文字
+    function drawText() {
+        // 主标题
+        var mainText = "🎉 生日快乐 🎉";
+        var fontSize = Math.min(cw * 0.1, 80); // 更大的字体
+        ctx.font = "bold " + fontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // 粉色渐变效果，避免过于刺眼
+        var pinkGradient = ctx.createLinearGradient(0, ch/2 - fontSize, 0, ch/2 + fontSize);
+        pinkGradient.addColorStop(0, "rgba(255, 182, 193, 0.9)");     // 浅粉色
+        pinkGradient.addColorStop(0.5, "rgba(255, 105, 180, 1)");     // 标准粉色
+        pinkGradient.addColorStop(1, "rgba(255, 20, 147, 0.9)");      // 深粉色
+
+        // 添加柔和的阴影效果
+        ctx.shadowColor = "rgba(255, 105, 180, 0.6)";
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.fillStyle = pinkGradient;
+        ctx.fillText(mainText, cw / 2, ch / 3);
+
+        // 副标题
+        var subText = "愿你光芒万丈 ✨";
+        var subFontSize = Math.min(cw * 0.06, 50);
+        ctx.font = "bold " + subFontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
+        
+        // 副标题也使用粉色系，但稍浅一些
+        var subPinkGradient = ctx.createLinearGradient(0, ch/2, 0, ch/2 + subFontSize);
+        subPinkGradient.addColorStop(0, "rgba(255, 192, 203, 0.9)");
+        subPinkGradient.addColorStop(1, "rgba(255, 182, 193, 0.8)");
+        
+        ctx.fillStyle = subPinkGradient;
+        ctx.shadowBlur = 10;
+        ctx.fillText(subText, cw / 2, ch / 3 + fontSize + 20);
+
+        // 恢复默认阴影
+        ctx.shadowBlur = 0;
+    }
+
+    // 主循环
+    function loop() {
+        requestAnimFrame(loop);
+
+        // 色相变化创造彩虹效果
+        hue = (hue + 0.8) % 360;
+
+        // 创建拖尾效果
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // 减少拖尾透明度，保持更多残影
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.globalCompositeOperation = 'lighter';
+
+        // 绘制粉色文字
+        drawText();
+
+        // 更新和绘制烟花
+        var i = fireworks.length;
+        while(i--) {
+            fireworks[i].draw();
+            fireworks[i].update(i);
         }
 
-        // 绘制华丽文字
-        function drawText() {
-            // 主标题
-            var mainText = "🎉 生日快乐 🎉";
-            var fontSize = Math.min(cw * 0.1, 80); // 更大的字体
-            ctx.font = "bold " + fontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            
-            // 文字阴影效果
-            ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
-            ctx.shadowBlur = 20;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            // 渐变色彩
-            var gradient = ctx.createLinearGradient(0, ch/2 - fontSize, 0, ch/2 + fontSize);
-            gradient.addColorStop(0, "hsl(" + (hue + 60) + ", 100%, 70%)");
-            gradient.addColorStop(0.5, "hsl(" + hue + ", 100%, 80%)");
-            gradient.addColorStop(1, "hsl(" + (hue - 60) + ", 100%, 70%)");
-            ctx.fillStyle = gradient;
-            
-            ctx.fillText(mainText, cw / 2, ch / 3);
-            
-            // 副标题
-            var subText = "愿你光芒万丈 ✨";
-            var subFontSize = Math.min(cw * 0.06, 50);
-            ctx.font = "bold " + subFontSize + "px 'Microsoft YaHei', 'SimHei', Arial, sans-serif";
-            ctx.fillStyle = "hsla(" + (hue + 180) + ", 100%, 80%, 0.9)";
-            ctx.shadowBlur = 15;
-            ctx.fillText(subText, cw / 2, ch / 3 + fontSize + 20);
-            
-            // 恢复默认阴影
-            ctx.shadowBlur = 0;
+        // 更新和绘制粒子
+        var j = particles.length;
+        while(j--) {
+            particles[j].draw();
+            particles[j].update(j);
         }
 
-        // 主循环
-        function loop() {
-            requestAnimFrame(loop);
-            
-            // 色相变化创造彩虹效果
-            hue = (hue + 0.8) % 360;
-            
-            // 创建拖尾效果
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // 减少拖尾透明度，保持更多残影
-            ctx.fillRect(0, 0, cw, ch);
-            ctx.globalCompositeOperation = 'lighter';
-            
-            // 绘制华丽文字
-            drawText();
-            
-            // 更新和绘制烟花
-            var i = fireworks.length;
-            while(i--) {
-                fireworks[i].draw();
-                fireworks[i].update(i);
-            }
-            
-            // 更新和绘制粒子
-            var j = particles.length;
-            while(j--) {
-                particles[j].draw();
-                particles[j].update(j);
-            }
-            
-            // 自动发射烟花
-            if(timerTick >= timerTotal) {
-                if(!mousedown) {
-                    // 在屏幕不同区域发射多束烟花
-                    var fireworkCount = Math.floor(random(3, 8));
-                    for(var h = 0; h < fireworkCount; h++) {
-                        // 随机选择发射起点
-                        var startX = random(cw * 0.2, cw * 0.8);
-                        var startY = ch;
-                        // 随机选择爆炸点
-                        var targetX = random(0, cw);
-                        var targetY = random(0, ch * 0.7);
-                        fireworks.push(new Firework(startX, startY, targetX, targetY));
-                    }
-                    timerTick = 0;
+        // 自动发射烟花
+        if(timerTick >= timerTotal) {
+            if(!mousedown) {
+                // 在屏幕不同区域发射多束烟花
+                var fireworkCount = Math.floor(random(3, 8));
+                for(var h = 0; h < fireworkCount; h++) {
+                    // 随机选择发射起点
+                    var startX = random(cw * 0.2, cw * 0.8);
+                    var startY = ch;
+                    // 随机选择爆炸点
+                    var targetX = random(0, cw);
+                    var targetY = random(0, ch * 0.7);
+                    fireworks.push(new Firework(startX, startY, targetX, targetY));
                 }
-            } else {
-                timerTick++;
+                timerTick = 0;
             }
-            
-            // 鼠标/触摸事件发射烟花
-            if(limiterTick >= limiterTotal) {
-                if(mousedown) {
-                    fireworks.push(new Firework(cw / 2, ch, mx, my));
-                    limiterTick = 0;
-                }
-            } else {
-                limiterTick++;
-            }
+        } else {
+            timerTick++;
         }
 
-        // 事件监听 - 鼠标
-        canvas.addEventListener('mousemove', function(e) {
-            e.preventDefault();
-            mx = e.pageX - canvas.offsetLeft;
-            my = e.pageY - canvas.offsetTop;
-        });
+        // 鼠标/触摸事件发射烟花
+        if(limiterTick >= limiterTotal) {
+            if(mousedown) {
+                fireworks.push(new Firework(cw / 2, ch, mx, my));
+                limiterTick = 0;
+            }
+        } else {
+            limiterTick++;
+        }
+    }
 
-        canvas.addEventListener('mousedown', function(e) {
-            e.preventDefault();
-            mousedown = true;
-        });
+    // 事件监听 - 鼠标
+    canvas.addEventListener('mousemove', function(e) {
+        e.preventDefault();
+        mx = e.pageX - canvas.offsetLeft;
+        my = e.pageY - canvas.offsetTop;
+    });
 
-        canvas.addEventListener('mouseup', function(e) {
-            e.preventDefault();
-            mousedown = false;
-        });
+    canvas.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        mousedown = true;
+    });
 
-        // 事件监听 - 触摸设备
-        canvas.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            var touch = e.touches[0];
-            mx = touch.clientX - canvas.offsetLeft;
-            my = touch.clientY - canvas.offsetTop;
-            mousedown = true;
-        });
+    canvas.addEventListener('mouseup', function(e) {
+        e.preventDefault();
+        mousedown = false;
+    });
 
-        canvas.addEventListener('touchmove', function(e) {
-            e.preventDefault();
-            var touch = e.touches[0];
-            mx = touch.clientX - canvas.offsetLeft;
-            my = touch.clientY - canvas.offsetTop;
-        });
+    // 事件监听 - 触摸设备
+    canvas.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        var touch = e.touches[0];
+        mx = touch.clientX - canvas.offsetLeft;
+        my = touch.clientY - canvas.offsetTop;
+        mousedown = true;
+    });
 
-        canvas.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            mousedown = false;
-        });
+    canvas.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        var touch = e.touches[0];
+        mx = touch.clientX - canvas.offsetLeft;
+        my = touch.clientY - canvas.offsetTop;
+    });
 
-        // 启动动画
-        window.onload = function() {
-            loop();
-        };
-    </script>
+    canvas.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        mousedown = false;
+    });
+
+    // 启动动画
+    window.onload = function() {
+        loop();
+    };
+</script>
 </body>
 </html>
